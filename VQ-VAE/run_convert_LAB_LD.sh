@@ -1,0 +1,22 @@
+CUDA_VISIBLE_DEVICES=0 python convert_LAB.py \
+    --n_gpu 1 \
+    --dataset 'prostate' \
+    --source "BIDMC" \
+    --target "BMC" \
+    --channel_mul 8 \
+    --langevin_step 40 \
+    --langevin_lr 10.0 \
+    --lr 0.001 \
+    --beta1 0.5 \
+    --beta2 0.999 \
+    --attention \
+    --n_embed 512 \
+    --embed_dim 64 \
+    --batch_size 8 \
+    --sn \
+    --ae_ckpt /path/to/checkpoint/vqvae_best.pt \
+    --ebm_ckpt /path/to/ebm_checkpoint.pt \
+    --data_root ./datasets/ \
+    --num_save 5 \
+    --color_space LAB \
+    --expt_name train_LAB_LD_prostate

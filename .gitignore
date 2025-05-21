@@ -1,0 +1,50 @@
+#Ignore pre-existing folders and files
+ALAE/
+assets/
+Beta-VAE/
+DAG4MIA/
+Fundus/
+Fundus-doFE.zip
+README.md
+synthetic
+VQ-VAE.zip
+.vscode/
+
+#Ignore folders in deeplab folder
+pytorch-deeplab-xception/__pycache__
+pytorch-deeplab-xception/dataloaders/__pycache__
+pytorch-deeplab-xception/dataloaders/dataloader/ms_cmr
+pytorch-deeplab-xception/dataloaders/dataloader/ms_fundus/__pycache__
+pytorch-deeplab-xception/dataloaders/dataloader/ms_fundus/Refuge_dataloader.py
+pytorch-deeplab-xception/dataloaders/dataloader/ms_prostate/__pycache__
+pytorch-deeplab-xception/dataloaders/datasets
+pytorch-deeplab-xception/doc/results.png
+pytorch-deeplab-xception/modeling/__pycache__
+pytorch-deeplab-xception/modeling/backbone/__pycache__
+pytorch-deeplab-xception/modeling/deeplabv3/__pycache__
+pytorch-deeplab-xception/modeling/sync_batchnorm/__pycache__
+pytorch-deeplab-xception/networks/__pycache__
+pytorch-deeplab-xception/networks/ram_dsir
+pytorch-deeplab-xception/run
+pytorch-deeplab-xception/utils/__pycache__
+pytorch-deeplab-xception/wandb
+pytorch-deeplab-xception/figures
+#Ignore folders and files in TriD folder
+TriD
+#Ignore folders and files in VQ-VAE folder
+VQ-VAE/logs
+VQ-VAE/results
+VQ-VAE/datasets
+VQ-VAE/__pycache__
+VQ-VAE/.ipynb_checkpoints
+VQ-VAE/dataloader/ms_prostate/__pycache__
+VQ-VAE/dataloader/ms_fundus/__pycache__
+VQ-VAE/dataloader/ms_cmr
+VQ-VAE/dataloader/ms_fundus/Refuge_dataloader.py
+VQ-VAE/distributed/__pycache__
+VQ-VAE/model/__pycache__
+VQ-VAE/ulib/__pycache__
+VQ-VAE/process_nii.ipynb
+FedDG_RAM
+VQ-VAE/source_label.png
+VQ-VAE/visualise_nii.ipynb

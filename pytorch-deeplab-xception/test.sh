@@ -1,0 +1,1 @@
+CUDA_VISIBLE_DEVICES=1 python train.py --backbone resnet34 --lr 5e-3 --workers 4 --epochs 5000 --batch-size 1 --base-size 256 --crop-size 256 --gpu-ids 0 --checkname deeplab-resnet --eval-interval 1 --dataset fundus --resume /path/to/run/fundus/deeplab-resnet/experiment_X/test_checkpoint.pth.tar --testid 1 --testing
