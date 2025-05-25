@@ -11,11 +11,11 @@
 
 ## 🌟 Highlights
 
-- **🏆 State-of-the-art Performance**: Achieves **87.61% mDSC** on Fundus and **89.16% DSC** on Prostate MRI segmentation
-- **🔄 Novel Approach**: First to leverage Langevin dynamics for domain-bridging data augmentation
-- **📈 Consistent Improvements**: Enhances existing domain randomization methods by up to **3.05% mIoU**
-- **🧮 Theoretical Foundation**: Proven regularization effects with bounds on Rademacher complexity
-- **🏥 Medical Focus**: Specifically designed for medical image segmentation challenges
+- **🚀 Boosts Segmentation Accuracy**: Achieves state-of-the-art **87.61% mDSC** (Fundus) & **89.16% DSC** (Prostate MRI).
+- **🌉 Bridges Domain Gaps**: First to use Langevin dynamics for domain-bridging data augmentation in segmentation.
+- **➕ Enhances Existing Methods**: Improves domain randomization techniques by up to **3.05% mIoU**.
+- **💡 Theoretically Sound**: Features proven regularization effects with Rademacher complexity bounds.
+- **🩺 Tailored for Medical Imaging**: Specifically designed to overcome challenges in medical image segmentation.
 
 ## 📋 Table of Contents
 
@@ -32,22 +32,36 @@
 
 ## 🔍 Overview
 
-LangDAug is a novel data augmentation technique for multi-source domain generalization in medical image segmentation. By leveraging Energy-Based Models (EBMs) trained via contrastive divergence, we generate intermediate domain samples through Langevin dynamics that act as bridges between source domains.
+Medical image segmentation models often face a critical challenge: **domain shift**. Performance can significantly degrade when models encounter images from new scanners, hospitals, or patient populations not represented in the training data. This limits their reliability in real-world clinical settings.
 
-### Key Features
+**LangDAug (Langevin Data Augmentation)** is a novel technique designed to address this multi-source domain generalization problem in medical image segmentation. Instead of just training on existing source domains, LangDAug intelligently generates new data samples that act as bridges *between* these domains.
 
-- **Domain Traversal**: Uses EBMs to traverse between source domain pairs
-- **Langevin Sampling**: Generates intermediate samples via Langevin dynamics
-- **Plug-and-Play**: Can enhance existing domain randomization methods
-- **Theoretically Grounded**: Provides regularization with proven generalization bounds
+It achieves this by:
+1.  Training Energy-Based Models (EBMs) to understand the characteristics of different source domains.
+2.  Employing Langevin dynamics to sample from these EBMs, creating images that smoothly transition between learned domains.
+3.  Augmenting the training data for segmentation models with these new "bridge" samples.
+
+This approach not only improves generalization to unseen domains but also enhances the robustness of the segmentation model.
+
+### ✨ Key Advantages
+
+- **Improved Generalization**: Significantly boosts performance on unseen target domains.
+- **Novel Domain Bridging**: Leverages EBMs and Langevin dynamics to create meaningful intermediate domain samples.
+- **Seamless Integration**: Can be used as a plug-and-play module to enhance existing domain randomization methods.
+- **Strong Theoretical Backing**: The regularization effects are theoretically grounded, ensuring reliable improvements.
 
 ## 🔧 Method
 
 Our approach consists of three main steps:
 
-1. **EBM Training**: Train Energy-Based Models to traverse between source domains using contrastive divergence
-2. **Langevin Sampling**: Generate intermediate domain samples through Langevin dynamics
-3. **Augmented Training**: Train segmentation models with both original and Langevin samples
+1. **EBM Training**: Train Energy-Based Models to traverse between source domains using contrastive divergence.
+2. **Langevin Sampling**: Generate intermediate domain samples through Langevin dynamics.
+3. **Augmented Training**: Train segmentation models with both original and Langevin samples.
+
+The overall flow can be visualized as:
+```text
+[EBM Training] ➔ [Langevin Sampling] ➔ [Augmented Training]
+```
 
 ## 📊 Results
 
@@ -162,7 +176,9 @@ python train.py --backbone resnet34 --dataset prostate --splitid BMC RUNMC UCL -
 ```
 ### Training with Domain Randomization + LangDAug
 
+```bash
 python train.py --backbone resnet34 --dataset fundus --method TriD --with_LAB_LD
+```
 
 ## 📈 Evaluation
 
