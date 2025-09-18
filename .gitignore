@@ -75,6 +75,10 @@ datasets/
 *.zip
 *.tar.gz
 
+# Ignore generated images and slices
+VQ-VAE/outputs_slices/
+*.png
+
 # System files
 .DS_Store
 Thumbs.db
