@@ -215,7 +215,7 @@ def test_image_folder(args, ae, ebm, refine_ebm=None, iteration=0, im_size=256, 
 			if args.refine:
 				image_refined = langvin_sampler(refine_ebm, image_t.clone().detach())
 				image_pair = torch.cat((image_pair, image_refined), dim=0)
-			tv.utils.save_image(image_pair, os.path.join(root, img_name), padding=0, normalize=True, range=(-1, 1),
+			tv.utils.save_image(image_pair, os.path.join(root, img_name), padding=0, normalize=True, value_range=(-1, 1),
 								nrow=1)
 
 def normalize_to_unit_range(tensor):
@@ -312,7 +312,7 @@ def main(args):
 		])
 	elif args.dataset == 'prostate':
 		composed_transforms_tr = A.Compose([											
-											A.RandomSizedCrop(min_max_height=(300,330), height=384, width=384, p=0.3),
+											A.RandomSizedCrop(min_max_height=(300,330), size=(384, 384), p=0.3),
 										])
 
     # dataloader config
@@ -380,6 +380,29 @@ def main(args):
 		 source_label_latent.clone().detach(),
 										  langevin_steps=args.langevin_step, lr=args.langevin_lr, num_save=args.num_save)
 
+		# with torch.no_grad():
+		# 	for step in range(len(source_latent_q)):
+		# 		curr_latent = source_latent_q[step]
+		# 		curr_image = ae.dec(curr_latent)
+
+		# 		if args.color_space == 'RGB':
+		# 			LAB_curr_image = rgb_to_lab(curr_image)
+		# 		else:
+		# 			LAB_curr_image = curr_image
+
+		# 		if args.dataset == 'fundus':
+		# 			LAB_curr_image[:, 0:1, :, :] = L_channel_source_img
+
+		# 		if args.color_space == 'LAB':
+		# 			LAB_curr_image = denormalize_lab_tensor(LAB_curr_image)
+					
+		# 		curr_image = lab_to_rgb(LAB_curr_image)
+				
+		# 		curr_mask = torch.max(source_label) - source_label
+
+		# 		for k in range(curr_image.shape[0]):
+		# 			utils.save_image(curr_image[k], os.path.join(save_dir, 'image', f'{i}_{(step+1) * args.num_save}_{k}.png'), padding=0, normalize=True, value_range=(-1, 1), nrow=1)
+		# 			utils.save_image(curr_mask[k], os.path.join(save_dir, 'mask', f'{i}_{(step+1) * args.num_save}_{k}.png'), padding=0, normalize=True, value_range=(-1, 1), nrow=1)
 		with torch.no_grad():
 			for step in range(len(source_latent_q)):
 				curr_latent = source_latent_q[step]
@@ -397,13 +420,27 @@ def main(args):
 					LAB_curr_image = denormalize_lab_tensor(LAB_curr_image)
 					
 				curr_image = lab_to_rgb(LAB_curr_image)
+				full_mask = torch.max(source_label) - source_label
 				
-				curr_mask = torch.max(source_label) - source_label
-
 				for k in range(curr_image.shape[0]):
-					utils.save_image(curr_image[k], os.path.join(save_dir, 'image', f'{i}_{(step+1) * args.num_save}_{k}.png'), padding=0, normalize=True, range=(-1, 1), nrow=1)
-					utils.save_image(curr_mask[k], os.path.join(save_dir, 'mask', f'{i}_{(step+1) * args.num_save}_{k}.png'), padding=0, normalize=True, range=(-1, 1), nrow=1)
+					# orig_name = batch['img_name'][k]
+					orig_name = f'{i}_{(step + 1) * args.num_save}_{k}.png'
+					# 保存图像
+					utils.save_image(
+						curr_image[k],
+						os.path.join(save_dir, 'image', orig_name),
+						padding=0, normalize=True, value_range=(-1, 1), nrow=1
+					)
 
+					# 保存 mask
+					mask_name = orig_name.rsplit('.', 1)[0] + '.png'
+					utils.save_image(
+						full_mask[k]/2.0,
+						os.path.join(save_dir, 'mask', mask_name),
+						padding=0, normalize=False, nrow=1
+					)
+
+                    
 if __name__ == "__main__":
 	parser = argparse.ArgumentParser()
 
@@ -498,7 +535,7 @@ if __name__ == "__main__":
 		"%s"%(args.suffix) if args.suffix else None
 	] if item is not None])
 	args.run_dir = _create_run_dir_local(save_path, suffix)
-	_copy_dir(['adapt.py', 'ebm.py', 'model'], args.run_dir)
+	_copy_dir(['ebm.py', 'model'], args.run_dir)
 
 
 

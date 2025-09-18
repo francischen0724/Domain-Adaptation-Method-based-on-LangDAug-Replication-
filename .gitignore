@@ -47,3 +47,34 @@ VQ-VAE/process_nii.ipynb
 FedDG_RAM
 VQ-VAE/source_label.png
 VQ-VAE/visualise_nii.ipynb
+
+# Python cache & checkpoints
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.ipynb_checkpoints/
+
+# Logs
+logs/
+*.log
+
+# Model weights & checkpoints
+*.pt
+*.pth
+*.tar
+*.ckpt
+checkpoints*/
+runs*/
+
+# Data (medical images, datasets)
+data/
+datasets/
+*.nii
+*.nii.gz
+*.zip
+*.tar.gz
+
+# System files
+.DS_Store
+Thumbs.db

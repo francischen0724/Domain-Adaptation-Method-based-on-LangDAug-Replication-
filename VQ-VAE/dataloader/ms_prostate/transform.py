@@ -48,20 +48,37 @@ def get_train_transform(patch_size=(384, 384)):
     return tr_transforms
 
 
-def collate_fn_w_transform(batch):
-    image, label, name = zip(*batch)
-    image = np.stack(image, 0)
-    label = np.stack(label, 0)
-    name = np.stack(name, 0)
-    data_dict = {'data': image, 'mask': label, 'name': name}
-    tr_transforms = get_train_transform()
-    data_dict = tr_transforms(**data_dict)
-    data_dict['data'] = normalize_image_to_m1_1(data_dict['data'])
-    data_dict['data'] = np.repeat(data_dict['data'], 3, axis=1)
+# def collate_fn_w_transform(batch):
+#     image, label, name = zip(*batch)
+#     image = np.stack(image, 0)
+#     label = np.stack(label, 0)
+#     name = np.stack(name, 0)
+#     data_dict = {'data': image, 'mask': label, 'name': name}
+#     tr_transforms = get_train_transform()
+#     data_dict = tr_transforms(**data_dict)
+#     data_dict['data'] = normalize_image_to_m1_1(data_dict['data'])
+#     data_dict['data'] = np.repeat(data_dict['data'], 3, axis=1)
 
-    data_dict['data'] = torch.from_numpy(data_dict['data']).to(dtype=torch.float32)
-    data_dict['mask'] = torch.from_numpy(data_dict['mask']).to(dtype=torch.float32)
+#     data_dict['data'] = torch.from_numpy(data_dict['data']).to(dtype=torch.float32)
+#     data_dict['mask'] = torch.from_numpy(data_dict['mask']).to(dtype=torch.float32)
+#     return data_dict
+
+def collate_fn_w_transform(batch):
+    images = np.stack([b["image"].numpy() for b in batch], axis=0)
+    labels = np.stack([b["label"].numpy() for b in batch], axis=0)
+    names  = [b["img_name"] for b in batch]
+    aug_wt = torch.tensor([b["aug_wt"] for b in batch], dtype=torch.float32)
+
+    data_dict = {"data": images, "mask": labels, "name": names}
+    tr_transforms = get_train_transform(patch_size=(384, 384))
+    data_dict = tr_transforms(**data_dict)   # ✅ 应用增强
+
+    # numpy → torch
+    data_dict["data"]  = torch.from_numpy(data_dict["data"]).float()
+    data_dict["mask"]  = torch.from_numpy(data_dict["mask"]).float()
+    data_dict["aug_wt"] = aug_wt
     return data_dict
+
 
 
 def collate_fn_wo_transform(batch):

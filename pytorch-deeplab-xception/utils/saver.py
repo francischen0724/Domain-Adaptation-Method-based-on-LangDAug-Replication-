@@ -42,6 +42,10 @@ class Saver(object):
             best_pred = state['best_pred']
             with open(os.path.join(self.experiment_dir, 'best_pred.txt'), 'w') as f:
                 f.write(str(best_pred))
+
+            local_best_path = os.path.join(self.experiment_dir, 'model_best.pth.tar')
+            shutil.copyfile(filename, local_best_path)
+
             if self.runs:
                 previous_miou = [0.0]
                 for run in self.runs:

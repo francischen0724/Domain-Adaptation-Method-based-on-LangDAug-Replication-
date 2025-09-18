@@ -1,9 +1,9 @@
 import os
 import pandas as pd
 
-dataroot = '/provide/your/path'
+dataroot = './datasets/prostate'
 
-domains = ['Domain1', 'Domain2', 'Domain3', 'Domain4']
+domains = ['BIDMC', 'BMC', 'RUNMC', 'UCL', 'HK', 'I2CVB']
 
 for set in ['train', 'test']:
 

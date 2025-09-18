@@ -5,7 +5,7 @@ CUDA_VISIBLE_DEVICES=0 python adapt_fundus_LAB_LD.py \
     --target '2' \
     --channel_mul 8 \
     --langevin_step 30 \
-    --langevin_lr 10.0 \
+    --langevin_lr 1.0 \
     --lr 0.001 \
     --beta1 0.5 \
     --beta2 0.999 \

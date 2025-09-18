@@ -35,6 +35,9 @@ from dataloader.ms_fundus.fundus_dataloader import FundusSegmentation
 from dataloader.ms_fundus import fundus_transforms as tr
 from dataloader.ms_prostate.convert_csv_to_list import convert_labeled_list
 from dataloader.ms_prostate.PROSTATE_dataloader import PROSTATE_dataset
+import matplotlib.pyplot as plt
+
+loss_history = []
 
 IMG_EXTENSIONS = [
 	'.jpg', '.JPG', '.jpeg', '.JPEG',
@@ -239,7 +242,7 @@ def test_image_folder(args, ae, ebm, refine_ebm=None, iteration=0, im_size=256, 
 		if args.refine:
 			image_refined = langvin_sampler(refine_ebm, image_t.clone().detach())
 			image_pair = torch.cat((image_pair, image_refined), dim=0)
-		tv.utils.save_image(image_pair, os.path.join(root, img_name), padding=0, normalize=True, range=(-1, 1),
+		tv.utils.save_image(image_pair, os.path.join(root, img_name), padding=0, normalize=True, value_range=(-1, 1),
 							nrow=1)
 
 def normalize_to_unit_range(tensor):
@@ -336,7 +339,7 @@ def main(args):
 		])
 	elif args.dataset == 'prostate':
 		composed_transforms_tr = A.Compose([											
-											A.RandomSizedCrop(min_max_height=(300,330), height=384, width=384, p=0.3),
+											A.RandomSizedCrop(min_max_height=(300, 330), size=(384, 384), p=0.3),
 											A.SafeRotate(limit=20, border_mode=cv2.BORDER_CONSTANT, value=-1, mask_value=0, p=0.3),											
 										])
 
@@ -344,11 +347,11 @@ def main(args):
 	if args.dataset == 'fundus':
 		source_dataset =  FundusSegmentation(base_dir=args.data_path, phase='train', splitid=args.src_split_id, transform=composed_transforms_tr)
 		source_sampler = dist.data_sampler(source_dataset, shuffle=True, distributed=args.distributed)
-		source_loader = DataLoader(source_dataset, batch_size=args.batch_size, sampler=source_sampler, num_workers=0, drop_last=True)
+		source_loader = DataLoader(source_dataset, batch_size=args.batch_size, sampler=source_sampler, num_workers=8, pin_memory=True, drop_last=True)
 
 		target_dataset =  FundusSegmentation(base_dir=args.data_path, phase='train', splitid=args.trg_split_id, transform=composed_transforms_tr)
 		target_sampler = dist.data_sampler(target_dataset, shuffle=True, distributed=args.distributed)
-		target_loader = DataLoader(target_dataset, batch_size=args.batch_size, sampler=target_sampler, num_workers=0, drop_last=True)
+		target_loader = DataLoader(target_dataset, batch_size=args.batch_size, sampler=target_sampler, num_workers=8, pin_memory=True, drop_last=True)
 	elif args.dataset == 'prostate':
 		source_csv, target_csv = [], []
 		source_csv.append(args.source + '.csv')
@@ -362,7 +365,7 @@ def main(args):
 		source_loader = DataLoader(dataset=source_dataset,
 							batch_size=args.batch_size,
 							sampler=source_sampler,
-							pin_memory=True,
+							pin_memory=False,
 							num_workers=0,
 							drop_last=True)
 		
@@ -372,7 +375,7 @@ def main(args):
 		target_loader = DataLoader(dataset=target_dataset,
 							batch_size=args.batch_size,
 							sampler=target_sampler,
-							pin_memory=True,
+							pin_memory=False,
 							num_workers=0,
 							drop_last=True)
 	
@@ -440,12 +443,13 @@ def main(args):
 		if args.l2:
 			loss += (target_energy**2 + source_energy**2).mean()
 
-		if abs(loss.item() > 100000) or loss.item() == np.nan:
+		if abs(loss.item()) > 10000 or torch.isnan(loss):
 			print('Diverge~~~~')
-			sys.exit()
+			break
 
 		loss.backward()
 		latent_optimizer.step()
+		loss_history.append(loss.item())
 
 		ema(latent_ema, latent_ebm, decay=0.999)
 		if args.refine:
@@ -465,7 +469,7 @@ def main(args):
 
 		used_sample += batch_size
 
-		if iterations % 300 == 0 and iterations != 0:
+		if iterations % 100 == 0 and iterations != 0:
 			test_image_folder(args, ae=ae, ebm=latent_ema, refine_ebm=refine_ebm, iteration=iterations, device=device, source_dataset=source_dataset)
 			torch.save(latent_ebm.state_dict(), f"{args.run_dir}/ebm_{str(iterations).zfill(6)}.pt")
 
@@ -489,19 +493,26 @@ def main(args):
 					f"{args.run_dir}/{str(iterations).zfill(6)}.png",
 					nrow=nrow,
 					normalize=True,
-					range=(-1, 1),
+					value_range=(-1, 1),
 					padding=0
 				)
-
-			if iterations==6000:
-				1/0
+	# Save final model and loss curve
+	torch.save(latent_ebm.state_dict(), os.path.join(args.run_dir, "ebm_final.pt"))
+	np.save(os.path.join(args.run_dir, 'loss_history.npy'), np.array(loss_history))
+	plt.figure()
+	plt.plot(loss_history)
+	plt.xlabel("Iterations")
+	plt.ylabel("Loss")
+	plt.title("EBM Training Loss")
+	plt.savefig(os.path.join(args.run_dir, 'loss_curve.png'))
+	plt.close()
 
 
 if __name__ == "__main__":
 	parser = argparse.ArgumentParser()
 
 	parser.add_argument("--log_path", type=str, default='results')
-	parser.add_argument("--n_samples", type=int, default=3_000_000)
+	parser.add_argument("--n_samples", type=int, default=3_000_000) 
 	parser.add_argument("--n_gpu", type=int, default=1)
 	parser.add_argument("--data_root", type=str)
 	parser.add_argument("--ae_ckpt", type=str, default=None)
@@ -585,7 +596,7 @@ if __name__ == "__main__":
 		"%s"%(args.suffix) if args.suffix else None
 	] if item is not None])
 	args.run_dir = _create_run_dir_local(save_path, suffix)
-	_copy_dir(['adapt.py', 'ebm.py', 'model'], args.run_dir)
+	_copy_dir(['ebm.py', 'model'], args.run_dir)
 
 
 

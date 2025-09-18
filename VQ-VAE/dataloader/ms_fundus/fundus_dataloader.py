@@ -93,8 +93,9 @@ class FundusSegmentation(Dataset):
         _target = self.label_pool_raw[index]
         _img_name = self.img_name_pool_raw[index]
         _dc = self.domain_code_raw[index]
+        _label_path = self.image_list[index]['label']
 
-        sample = {'image': _img, 'label': _target, 'img_name': _img_name, 'dc': _dc}
+        sample = {'image': _img, 'label': _target, 'img_name': _img_name, 'dc': _dc, 'label_path': _label_path}
 
         if self.transform is not None:
             sample = self.transform(sample)
@@ -125,16 +126,21 @@ class FundusSegmentation(Dataset):
                 self.image_pool[Flag].append(Image.open(self.image_list[index]['image']).convert('RGB').crop((5, 0, 2144/2, 1424)).resize((256, 256), Image.LANCZOS))
                 self.image_pool_raw.append(Image.open(self.image_list[index]['image']).convert('RGB').crop((5, 0, 2144/2, 1424)).resize((256, 256), Image.LANCZOS))
 
-                _target = np.asarray(Image.open(self.image_list[index]['label']).convert('L'))
-                _target = _target[144:144+512, 144:144+512]
-                _target = Image.fromarray(_target)
+                # _target = np.asarray(Image.open(self.image_list[index]['label']).convert('L'))
+                # _target = _target[144:144+512, 144:144+512]
+                # _target = Image.fromarray(_target)
+                # 修改后的 mask 裁剪逻辑
+                _target = Image.open(self.image_list[index]['label']).convert('L')
+                _target = _target.crop((5, 0, 2144/2, 1424))
+                _target = _target.resize((256, 256), Image.LANCZOS)
+                _target = Image.fromarray(np.array(_target))
             else:
                 self.image_pool[Flag].append(Image.open(self.image_list[index]['image']).convert('RGB').resize((256, 256), Image.LANCZOS))
                 self.image_pool_raw.append(Image.open(self.image_list[index]['image']).convert('RGB').resize((256, 256), Image.LANCZOS))
 
                 _target = Image.open(self.image_list[index]['label'])
 
-            if _target.mode is 'RGB':
+            if _target.mode == 'RGB':
                 _target = _target.convert('L')
             if self.state != 'prediction':
                 _target = _target.resize((256, 256))

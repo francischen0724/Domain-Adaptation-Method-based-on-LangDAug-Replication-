@@ -179,7 +179,7 @@ def train(epoch, loader, model, optimizer, scheduler, device, args):
 				)
 			)
 
-			if epoch % 5 == 0:
+			if epoch % 1000 == 0:
 				model.eval()
 
 				sample = img[:sample_size]
@@ -192,12 +192,19 @@ def train(epoch, loader, model, optimizer, scheduler, device, args):
 					out = lab_to_rgb(denormalize_lab_tensor(out))
 
 
+				# utils.save_image(
+				# 	torch.cat([sample, out], 0),
+				# 	f"{args.sample_path}/{str(epoch + 1).zfill(5)}_{str(i).zfill(5)}.png",
+				# 	nrow=sample_size,
+				# 	normalize=True,
+				# 	range=(-1, 1),
+				# )
 				utils.save_image(
 					torch.cat([sample, out], 0),
 					f"{args.sample_path}/{str(epoch + 1).zfill(5)}_{str(i).zfill(5)}.png",
 					nrow=sample_size,
 					normalize=True,
-					range=(-1, 1),
+					value_range=(-1, 1),  # ✅ 正确
 				)
 
 				model.train()
@@ -223,17 +230,17 @@ def main(args):
 		dataset =  FundusSegmentation(base_dir=args.data_path, phase='train', splitid=args.split_id, transform=composed_transforms_tr)
 		sampler = dist.data_sampler(dataset, shuffle=True, distributed=args.distributed)
 
-		loader = DataLoader(dataset, batch_size=args.batch_size, sampler=sampler, num_workers=0, drop_last=False)
+		loader = DataLoader(dataset, batch_size=args.batch_size, sampler=sampler, num_workers=8, pin_memory=True, drop_last=False)
 	elif args.dataset == "prostate":
 		source_csv = []
 		for s_n in args.domains:
-			source_csv.append(s_n + '.csv')
+			source_csv.append(s_n + '_train.csv')
 		sr_img_list, sr_label_list = convert_labeled_list(args.data_path, source_csv)
 		
 		composed_transforms_tr = A.Compose([											
-											A.RandomSizedCrop(min_max_height=(300,330), height=384, width=384, p=0.3),
-											A.SafeRotate(limit=20, border_mode=cv2.BORDER_CONSTANT, value=-1, mask_value=0, p=0.3),											
-											A.Flip(p=0.5),
+											A.RandomSizedCrop(min_max_height=(300, 330), size=(384, 384), p=0.3),
+											A.SafeRotate(limit=20, border_mode=cv2.BORDER_CONSTANT, fill=0, p=0.3),
+											A.HorizontalFlip(p=0.5),
 										])
 
 		dataset = PROSTATE_dataset(args.data_path, sr_img_list, sr_label_list,
@@ -243,7 +250,19 @@ def main(args):
 							batch_size=args.batch_size,
 							sampler=sampler,
 							pin_memory=True,
-							num_workers=0)
+							num_workers=8,
+							drop_last=False)
+		
+		print("========== [DEBUG VQ-VAE Data Loading] ==========")
+		print(f"Dataset root: {args.data_path}")
+		print(f"Train CSVs: {source_csv}")    # 如果有 csv list
+		print(f"Total images: {len(sr_img_list)}")
+		print(f"Total masks : {len(sr_label_list)}")
+
+		# 打印前 5 个样本
+		for i in range(min(5, len(sr_img_list))):
+			print(f"  {i}: {sr_img_list[i]} | {sr_label_list[i]}")
+		print("===============================================")
 
 
 	model = VQVAE(embed_dim=args.embed_dim, n_embed=args.n_embed, noise=args.noise).to(device)

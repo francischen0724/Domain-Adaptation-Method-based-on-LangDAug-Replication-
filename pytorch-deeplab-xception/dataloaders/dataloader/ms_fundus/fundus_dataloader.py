@@ -42,8 +42,10 @@ class FundusSegmentation(Dataset):
         self.label_pool = {'DGS':[], 'REF':[], 'RIM':[], 'REF_val':[], 'TRANS':[]}
         self.img_name_pool = {'DGS':[], 'REF':[], 'RIM':[], 'REF_val':[], 'TRANS':[]}
 
-        self.img_extension = {1: '.png', 2: '.jpg', 3: '.jpg', 4: '.jpg', 123: '.png', 122: '.png', 221: '.png', 223: '.png', 321: '.png', 322: '.png', 124: '.png', 224: '.png', 324: '.png', 421: '.png', 422: '.png', 423: '.png'}
-        self.label_extension = {1: '.png', 2: '.png', 3: '.bmp', 4: '.bmp', 123: '.png', 122: '.png', 221: '.png', 223: '.png', 321: '.png', 322: '.png', 124: '.png', 224: '.png', 324: '.png', 421: '.png', 422: '.png', 423: '.png'}
+        # self.img_extension = {1: '.png', 2: '.jpg', 3: '.jpg', 4: '.jpg', 123: '.png', 122: '.png', 221: '.png', 223: '.png', 321: '.png', 322: '.png', 124: '.png', 224: '.png', 324: '.png', 421: '.png', 422: '.png', 423: '.png'}
+        # self.label_extension = {1: '.png', 2: '.png', 3: '.bmp', 4: '.bmp', 123: '.png', 122: '.png', 221: '.png', 223: '.png', 321: '.png', 322: '.png', 124: '.png', 224: '.png', 324: '.png', 421: '.png', 422: '.png', 423: '.png'}
+        img_extensions = ['.jpg', '.png']
+        mask_extensions = ['.png', '.bmp']
 
         self.flags_DGS = ['gd', 'nd']
         self.flags_REF = ['g', 'n']
@@ -52,24 +54,60 @@ class FundusSegmentation(Dataset):
         self.splitid = splitid
         SEED = 1212
         random.seed(SEED)
+        # for id in splitid:
+        #     id = int(id)
+        #     if id > 10 and args.with_L and phase == 'train':
+        #         self._image_dir = os.path.join(self._base_dir,  'train_wL', 'Domain'+str(id), 'image/')
+        #         print('==> Loading {} data from: {}'.format('train_wL', self._image_dir))
+        #     elif id > 10 and args.with_LAB_LD and phase == 'train':
+        #         self._image_dir = os.path.join(self._base_dir,  'train_LAB_LD', 'Domain'+str(id), 'image/')
+        #         print('==> Loading {} data from: {}'.format('train_LAB_LD', self._image_dir))
+        #     else:    
+        #         self._image_dir = os.path.join(self._base_dir,  phase, 'Domain'+str(id), 'image/')
+        #         print('==> Loading {} data from: {}'.format(phase, self._image_dir))
+                        
+        #     imagelist = glob(self._image_dir + '*' + self.img_extension[id])
+            
+        #     for image_path in imagelist:
+        #         gt_path = image_path.replace('image', 'mask')
+        #         gt_path = gt_path.replace(self.img_extension[id], self.label_extension[id])
+        #         self.image_list.append({'image': image_path, 'label': gt_path})
         for id in splitid:
             id = int(id)
             if id > 10 and args.with_L and phase == 'train':
-                self._image_dir = os.path.join(self._base_dir,  'train_wL', 'Domain'+str(id), 'image/')
-                print('==> Loading {} data from: {}'.format('train_wL', self._image_dir))
+                self._image_dir = os.path.join(self._base_dir, 'train_wL', f'Domain{id}', 'image/')
+                print(f'==> Loading train_wL data from: {self._image_dir}')
             elif id > 10 and args.with_LAB_LD and phase == 'train':
-                self._image_dir = os.path.join(self._base_dir,  'train_LAB_LD', 'Domain'+str(id), 'image/')
-                print('==> Loading {} data from: {}'.format('train_LAB_LD', self._image_dir))
-            else:    
-                self._image_dir = os.path.join(self._base_dir,  phase, 'Domain'+str(id), 'image/')
-                print('==> Loading {} data from: {}'.format(phase, self._image_dir))
+                self._image_dir = os.path.join(self._base_dir, 'train_LAB_LD', f'Domain{id}', 'image/')
+                print(f'==> Loading train_LAB_LD data from: {self._image_dir}')
+            else:
+                self._image_dir = os.path.join(self._base_dir, phase, f'Domain{id}', 'image/')
+                print(f'==> Loading {phase} data from: {self._image_dir}')
 
-            imagelist = glob(self._image_dir + '*' + self.img_extension[id])
+            # 找出所有图像文件
+            imagelist = []
+            for ext in img_extensions:
+                imagelist.extend(glob(os.path.join(self._image_dir, f'*{ext}')))
+
+            # 每张图像推断 mask 路径
             for image_path in imagelist:
-                gt_path = image_path.replace('image', 'mask')
-                gt_path = gt_path.replace(self.img_extension[id], self.label_extension[id])
-                self.image_list.append({'image': image_path, 'label': gt_path})
+                mask_base = image_path.replace('image', 'mask')
+                mask_base = os.path.splitext(mask_base)[0]
 
+                # 查找可用的 mask 文件（支持 .png/.bmp）
+                mask_path = None
+                for m_ext in mask_extensions:
+                    test_mask = mask_base + m_ext
+                    if os.path.exists(test_mask):
+                        mask_path = test_mask
+                        break
+
+                if mask_path is None:
+                    print(f"[WARNING] 无法找到 mask 对应文件：{image_path}")
+                    continue
+
+                self.image_list.append({'image': image_path, 'label': mask_path})
+                
         print(len(self.image_list))
         random.shuffle(self.image_list)
         print(len(self.image_list))
@@ -105,8 +143,9 @@ class FundusSegmentation(Dataset):
         _target = self.label_pool_raw[index]
         _img_name = self.img_name_pool_raw[index]
         _dc = self.domain_code_raw[index]
+        _label_path = self.image_list[index]['label']  # 新增
         
-        sample = {'image': _img, 'label': _target, 'img_name': _img_name, 'dc': _dc}
+        sample = {'image': _img, 'label': _target, 'img_name': _img_name, 'dc': _dc, 'label_path': _label_path}
 
         if self.split == 'train':
             return self.transform_tr(sample)

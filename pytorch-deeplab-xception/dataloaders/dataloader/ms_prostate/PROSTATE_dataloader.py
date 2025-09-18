@@ -13,9 +13,26 @@ from tqdm import tqdm
 import lmdb
 import pickle, time
 from PIL import Image
+from skimage.transform import resize
+
+def _is_nifti(path):
+    return path.endswith('.nii') or path.endswith('.nii.gz')
+
+def _abspath(root, p):
+    return p if os.path.isabs(p) else os.path.join(root, p)
+
+def _basename_wo_nii(p):
+    base = os.path.basename(p)
+    if base.endswith('.nii.gz'):
+        return base[:-7]
+    if base.endswith('.nii'):
+        return base[:-4]
+    return os.path.splitext(base)[0]
+
 
 class PROSTATE_dataset(data.Dataset):
-    def __init__(self, root, img_list, label_list, target_size=384, batch_size=None, img_normalize=True, transform=None, aug_wt=1.0):
+    def __init__(self, root, img_list, label_list, target_size=384, batch_size=None,
+                 img_normalize=True, transform=None, aug_wt=1.0):
         super().__init__()
         self.root = root
         self.img_list = img_list
@@ -24,103 +41,179 @@ class PROSTATE_dataset(data.Dataset):
         self.img_normalize = img_normalize
         self.aug_wt = aug_wt
         self.image_pool, self.label_pool, self.name_pool, self.key_pool = [], [], [], []
-        self._read_img_into_memory()
-        if batch_size is not None:
-            iter_nums = len(self.image_pool) // batch_size
-            scale = math.ceil(250 / iter_nums)
-            self.image_pool = self.image_pool * scale
-            self.label_pool = self.label_pool * scale
-            self.name_pool = self.name_pool * scale
-            self.key_pool = self.key_pool * scale
         self.transform = transform
 
-        print('Image Nums:', len(self.img_list))
-        print('Slice Nums:', len(self.image_pool))
+        self._read_img_into_memory()
 
-        self.lmdb = lmdb.open('/provide/your/path', readonly=True, lock=False, readahead=False)
-        self.lmdb_translation = lmdb.open('/provide/your/path', readonly=True, lock=False, readahead=False)
+        if batch_size is not None:
+            iter_nums = len(self.image_pool) // batch_size
+            if iter_nums == 0:
+                iter_nums = 1
+            scale = math.ceil(250 / iter_nums)
+            self.image_pool *= scale
+            self.label_pool *= scale
+            self.name_pool  *= scale
+            self.key_pool   *= scale
 
+        print('Image Nums (volumes):', len(self.img_list))
+        print('Slice Nums (samples):', len(self.image_pool))
+
+        self.lmdb = None
+        self.lmdb_translation = None
+
+        if len(self.image_pool) == 0:
+            raise RuntimeError(
+                "[Dataset Empty inside PROSTATE_dataset] 没有任何切片被加入。请检查：\n"
+                "- CSV 是否正确\n"
+                "- NIfTI 路径是否存在\n"
+                "- 掩码是否正确\n"
+                "- data.lmdb 是否存在对应 key"
+            )
 
     def __len__(self):
         return len(self.image_pool)
 
     def __getitem__(self, item):
-        if '.nii.gz' in self.name_pool[item]:
-            img_npy, label_npy, name = self.load_data_point(self.lmdb, self.key_pool[item])
-            is_aug = 1
-        elif '.png' in self.name_pool[item]:
-            img_npy, label_npy, name = self.load_data_point(self.lmdb_translation, self.key_pool[item])
-            is_aug = 0.1
+        if self.lmdb is None:
+            self.lmdb = lmdb.open(
+                os.path.join(self.root, "data.lmdb"),
+                readonly=True, lock=False, readahead=False
+            )
+        if self.lmdb_translation is None:
+            self.lmdb_translation = lmdb.open(
+                os.path.join(self.root, "data.lmdb"),
+                readonly=True, lock=False, readahead=False
+            )
 
-        if self.img_normalize:
-            img_npy = normalize_image_to_m1_1(img_npy)
-        label_npy[label_npy > 1] = 1
+        fname = self.name_pool[item]
+        key   = self.key_pool[item]
 
-        sample = {'image': img_npy, 'label': label_npy, 'img_name': name, 'aug_wt': self.aug_wt}
+        def to_2d(x):
+            if x.ndim == 2:
+                return x
+            if x.ndim == 3:
+                if x.shape[0] in (1, 3):
+                    return x[0]
+                if x.shape[2] == 1:
+                    return x[..., 0]
+            x2 = np.squeeze(x)
+            assert x2.ndim == 2, f"Expect 2D for albumentations, got {x.shape}"
+            return x2
 
-        if self.transform is not None:
-            if '.nii.gz' in self.name_pool[item]:
-                transformed = self.transform(image=sample['image'][0], mask=sample['label'][0])
+        if _is_nifti(fname):
+            img_npy, label_npy, name = self.load_data_point(self.lmdb, key)
+            if self.img_normalize:
+                img_npy = normalize_image_to_m1_1(img_npy)
+            label_npy = (label_npy > 0).astype(np.uint8)
 
-                sample['image'][0], sample['label'][0] = transformed['image'], transformed['mask']
-            elif '.png' in self.name_pool[item]:
-                transformed = self.transform(image=sample['image'], mask=sample['label'])
+            img2d = to_2d(img_npy).astype(np.float32)
+            lbl2d = to_2d(label_npy).astype(np.uint8)
 
-                sample['image'], sample['label'] = transformed['image'], transformed['mask']
+            if self.transform is not None:
+                t = self.transform(image=img2d, mask=lbl2d)
+                img2d, lbl2d = t["image"], t["mask"]
 
-        if '.nii.gz' in self.name_pool[item]:
-            sample['image'] = np.repeat(sample['image'], 3, axis=0)
-        elif '.png' in self.name_pool[item]:
-            sample['image'] = sample['image'].transpose(2,0,1)
-            sample['label'] = sample['label'][:,:,0:1].transpose(2,0,1)
+            img_chw = np.stack([img2d]*3, axis=0)
+            lbl_chw = lbl2d[None, ...].astype(np.uint8)
 
-        sample['image'] = torch.from_numpy(sample['image']).float()
-        sample['label'] = torch.from_numpy(sample['label']).float()
+            sample = {
+                "image": torch.from_numpy(img_chw).float(),
+                "label": torch.from_numpy(lbl_chw).float(),
+                "img_name": name,
+                "aug_wt": self.aug_wt,
+            }
+            return sample
 
-        return sample
+        elif fname.endswith(".png"):
+            img_npy, label_npy, name = self.load_data_point(self.lmdb_translation, key)
+
+            # 强制灰度化 image
+            if img_npy.ndim == 3 and img_npy.shape[2] == 3:
+                img_gray = np.mean(img_npy, axis=2).astype(np.float32)
+            elif img_npy.ndim == 2:
+                img_gray = img_npy.astype(np.float32)
+            else:
+                raise RuntimeError(f"Unexpected PNG shape: {img_npy.shape}")
+
+            # ⚠️ 保证 label 单通道
+            if label_npy.ndim == 3 and label_npy.shape[2] == 3:
+                label_npy = label_npy[..., 0]  # 只取一个通道
+            elif label_npy.ndim == 2:
+                label_npy = label_npy.astype(np.uint8)
+            else:
+                raise RuntimeError(f"Unexpected label PNG shape: {label_npy.shape}")
+
+            # resize
+            if img_gray.shape != self.target_size:
+                img_gray = resize(img_gray, self.target_size, order=1, preserve_range=True).astype(np.float32)
+            if label_npy.shape != self.target_size:
+                label_npy = resize(label_npy, self.target_size, order=0, preserve_range=True).astype(np.uint8)
+
+            if self.img_normalize:
+                img_gray = normalize_image_to_m1_1(img_gray)
+            label_npy = (label_npy > 0).astype(np.uint8)
+
+            if self.transform is not None:
+                t = self.transform(image=img_gray, mask=label_npy)
+                img_gray, label_npy = t["image"], t["mask"]
+
+            # 保持和 NIfTI 一致
+            img_chw = np.stack([img_gray]*3, axis=0)          # (3,H,W)
+            lbl_chw = label_npy[None, ...].astype(np.uint8)   # (1,H,W)
+
+            sample = {
+                "image": torch.from_numpy(img_chw).float(),
+                "label": torch.from_numpy(lbl_chw).float(),
+                "img_name": name,
+                "aug_wt": self.aug_wt,
+            }
+            return sample
+
+        else:
+            raise RuntimeError(f"Unsupported file type for item {fname}")
 
     def _read_img_into_memory(self):
         img_num = len(self.img_list)
         for index in tqdm(range(img_num)):
+            p_img = _abspath(self.root, self.img_list[index])
+            p_msk = _abspath(self.root, self.label_list[index])
 
-            if '.nii.gz' in self.img_list[index]:
-                img_file = os.path.join(self.root, self.img_list[index])
-                label_file = os.path.join(self.root, self.label_list[index])
-
-                img_sitk = sitk.ReadImage(img_file)
-                label_sitk = sitk.ReadImage(label_file)
-
+            if _is_nifti(p_img):
+                img_sitk = sitk.ReadImage(p_img)
+                msk_sitk = sitk.ReadImage(p_msk)
                 img_npy = sitk.GetArrayFromImage(img_sitk).astype(np.float32)
-                label_npy = sitk.GetArrayFromImage(label_sitk)
+                msk_npy = sitk.GetArrayFromImage(msk_sitk).astype(np.uint8)
 
-                for slice in range(img_npy.shape[0]):
-                    if label_npy[slice, :, :].max() > 0:
-                        dir_name = os.path.basename(os.path.dirname(img_file))
-                        img_basename = os.path.basename(img_file).split('.')[0]
-                        self.image_pool.append((img_file, slice))
-                        self.label_pool.append((label_file, slice))
-                        self.name_pool.append(img_file)
-                        self.key_pool.append(f'{dir_name}_{img_basename}_{slice}')
-            elif '.png' in self.img_list[index]:
-                img_path = self.img_list[index]
-                key = f"{img_path.split('/')[-3].split('Domain')[-1]}_{img_path.split('/')[-1].split('.')[0]}"
+                D = img_npy.shape[0]
+
+                # ✅ 去掉 split，不再用 train/val/test
+                domain = os.path.basename(os.path.dirname(os.path.dirname(p_img)))   # BIDMC
+                case_id = _basename_wo_nii(p_img)
+                key_prefix = f"{domain}_{case_id}"
+
+                for sl in range(D):
+                    if msk_npy[sl].max() == 0:   # ⚠ 没有前景 → 跳过
+                        continue
+                    self.image_pool.append((p_img, sl))
+                    self.label_pool.append((p_msk, sl))
+                    self.name_pool.append(p_img)
+                    self.key_pool.append(f"{key_prefix}_{sl}")
+
+            elif p_img.endswith('.png'):
+                img_path = p_img
+                dom_id = os.path.basename(os.path.dirname(os.path.dirname(img_path)))
+                dom_id = dom_id.replace("Domain", "")
+                fname = os.path.splitext(os.path.basename(img_path))[0]
+                key = f"{dom_id}_{fname}"
+
                 self.image_pool.append(img_path)
-                self.label_pool.append(self.label_list[index])
+                self.label_pool.append(p_msk)
                 self.name_pool.append(img_path)
                 self.key_pool.append(key)
 
-    def preprocess(self, x):
+            else:
+                raise RuntimeError(f"Unsupported file type: {p_img}")
 
-        mask = x > 0
-        y = x[mask]
-
-        lower = np.percentile(y, 0.2)
-        upper = np.percentile(y, 99.8)
-
-        x[mask & (x < lower)] = lower
-        x[mask & (x > upper)] = upper
-        return np.expand_dims(x, axis=0)
-    
     def deserialize_data(self, serialized_data):
         data = pickle.loads(serialized_data)
         return data['image'], data['label'], data['name']
@@ -132,27 +225,3 @@ class PROSTATE_dataset(data.Dataset):
                 return self.deserialize_data(serialized_data)
             else:
                 raise KeyError(f'{key} not found')
-
-if __name__ == '__main__':
-
-    dataset_root = '/provide/your/path'
-    image_size = 384
-    batch_size = 8
-    source_name = ['BIDMC', 'BMC', 'HK', 'I2CVB', 'RUNMC', 'UCL']
-    source_csv = []
-    for s_n in source_name:
-        source_csv.append(s_n + '.csv')
-    sr_img_list, sr_label_list = convert_labeled_list(dataset_root, source_csv)
-    train_dataset = PROSTATE_dataset(dataset_root, sr_img_list, sr_label_list,
-                                            image_size, batch_size, img_normalize=False)
-    train_dataloader = DataLoader(dataset=train_dataset,
-                                    batch_size=batch_size,
-                                    shuffle=True,
-                                    pin_memory=True,
-                                    collate_fn=collate_fn_w_transform,
-                                    num_workers=4)
-    
-    for i, batch in enumerate(train_dataloader):
-        print(i)
-        image, mask = batch['data'], batch['mask']
-        print(image.shape, mask.shape, torch.max(image), torch.min(image), torch.max(mask), torch.min(mask), torch.unique(mask))

@@ -141,8 +141,12 @@ class Trainer(object):
 
             if self.args.cuda:
                 image, target = image.to('cuda',non_blocking=True), target.to('cuda',non_blocking=True)
-                aug_wt = sample['aug_wt'].to('cuda',non_blocking=True)
+                # aug_wt = sample['aug_wt'].to('cuda',non_blocking=True)
+                aug_wt = torch.ones(target.size(0), 1, 1, 1, device=target.device)
 
+            else:
+                aug_wt = torch.ones(target.size(0), 1, 1, 1)   
+                 
             self.scheduler(self.optimizer, i, epoch, self.best_pred)
             self.optimizer.zero_grad()
             output = self.model(image)
@@ -184,10 +188,14 @@ class Trainer(object):
         cup_dice = 0.
         for i, sample in enumerate(tbar):
             image, target = sample['image'], sample['label']
-            aug_wt = sample['aug_wt']
+            # aug_wt = sample['aug_wt']
             if self.args.cuda:
                 image, target = image.cuda(), target.cuda()
-                aug_wt = sample['aug_wt'].cuda()
+                # aug_wt = sample['aug_wt'].cuda()
+                aug_wt = torch.ones(target.size(0), 1, 1, 1, device=target.device)
+            else:
+                aug_wt = torch.ones(target.size(0), 1, 1, 1)
+
             with torch.no_grad():
                 output = self.model(image)
                 loss = self.criterion(output, target, aug_wt)
@@ -277,10 +285,16 @@ class Trainer(object):
         test_loss = 0.0
         for i, sample in enumerate(tbar):
             image, target = sample['image'], sample['label']
-            aug_wt = sample['aug_wt']
+            # aug_wt = sample['aug_wt']
+
             if self.args.cuda:
                 image, target = image.cuda(), target.cuda()
-                aug_wt = sample['aug_wt'].cuda()
+                # aug_wt = sample['aug_wt'].cuda()
+                aug_wt = torch.ones(target.size(0), 1, 1, 1, device=target.device)
+
+            else:
+                aug_wt = torch.ones(target.size(0), 1, 1, 1)
+
             with torch.no_grad():
                 output = self.model(image)
                 loss = self.criterion(output, target, aug_wt)
@@ -439,7 +453,7 @@ def main():
                         help='skip validation during training')
     parser.add_argument('--splitid', nargs='+', type=str, default=[1,2,3],
                         help='split id for fundus dataset')
-    parser.add_argument('--valid', nargs='+', type=int, default=[4], help='split id for validation dataset')
+    parser.add_argument('--valid', nargs='+', type=str, default=[4], help='split id for validation dataset')
     parser.add_argument('--testid', nargs='+', type=str, default=[4],
                         help='split id for test dataset')
     parser.add_argument('--testing', action='store_true', default=False,
